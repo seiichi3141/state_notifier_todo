@@ -1,14 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:state_notifier_todo/filtered_todos.dart';
 import 'package:state_notifier_todo/filtered_todos_state.dart';
 import 'package:state_notifier_todo/todos_state.dart';
 
-class FilteredTodosScreen extends StatefulWidget {
-  @override
-  _FilteredTodosScreenState createState() => _FilteredTodosScreenState();
-}
-
-class _FilteredTodosScreenState extends State<FilteredTodosScreen> {
+class FilteredTodosScreen extends StatelessWidget {
   final _textEditingController = TextEditingController();
 
   @override
@@ -41,34 +37,10 @@ class _FilteredTodosScreenState extends State<FilteredTodosScreen> {
   Widget _buildBody(BuildContext context) {
     return Column(
       children: [
-        Expanded(child: _buildList(context)),
+        Expanded(child: FilteredTodos()),
         _buildPanel(context),
       ],
     );
-  }
-
-  Widget _buildList(BuildContext context) {
-    return context.watch<FilteredTodosState>().when((completed, todos) {
-      return ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: todos.length,
-        itemBuilder: (_, index) {
-          final todo = todos[index];
-          return Card(
-            child: ListTile(
-              title: Text(todo.title),
-              trailing: IconButton(
-                icon: Icon(
-                  Icons.done,
-                  color: todo.completed ? Colors.green : Colors.grey,
-                ),
-                onPressed: () => context.read<TodosController>().toggle(todo),
-              ),
-            ),
-          );
-        },
-      );
-    }, loading: (_, __) => const Center(child: CircularProgressIndicator()));
   }
 
   Widget _buildPanel(BuildContext context) {

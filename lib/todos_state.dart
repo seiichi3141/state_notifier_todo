@@ -11,9 +11,7 @@ abstract class TodosState with _$TodosState {
   const factory TodosState({
     @Default(<Todo>[]) List<Todo> todos,
   }) = TodosStateData;
-  const factory TodosState.loading({
-    @Default(<Todo>[]) List<Todo> todos,
-  }) = TodosStateLoading;
+  const factory TodosState.loading() = TodosStateLoading;
 }
 
 class TodosController extends StateNotifier<TodosState> with LocatorMixin {
@@ -27,6 +25,7 @@ class TodosController extends StateNotifier<TodosState> with LocatorMixin {
 
     await Future<void>.delayed(const Duration(seconds: 3));
 
+    // 初期データを設定、TodosStateLoadingからTodoStateDataへ変わるのでローディング完了の状態となる
     state = TodosState(
       todos: [
         Todo(id: _uuid.v4(), title: '朝食を食べる'),
@@ -37,26 +36,34 @@ class TodosController extends StateNotifier<TodosState> with LocatorMixin {
   }
 
   void add(String title) {
-    final todos = state.todos.toList()
-      ..add(
-        Todo(id: _uuid.v4(), title: title),
+    final currentState = state;
+    if (currentState is TodosStateData) {
+      // todosのクローンに新しいTodoを追加してstateを更新
+      final todos = currentState.todos.toList()
+        ..add(
+          Todo(id: _uuid.v4(), title: title),
+        );
+      state = currentState.copyWith(
+        todos: todos,
       );
-    state = state.copyWith(
-      todos: todos,
-    );
+    }
   }
 
   void toggle(Todo todo) {
-    final todos = state.todos.map((t) {
-      if (t == todo) {
-        return t.copyWith(
-          completed: !t.completed,
-        );
-      }
-      return t;
-    }).toList();
-    state = state.copyWith(
-      todos: todos,
-    );
+    final currentState = state;
+    if (currentState is TodosStateData) {
+      // Todoを検索してcomplatedをtoggleし、stateを更新
+      final todos = currentState.todos.map((t) {
+        if (t == todo) {
+          return t.copyWith(
+            completed: !t.completed,
+          );
+        }
+        return t;
+      }).toList();
+      state = TodosState(
+        todos: todos,
+      );
+    }
   }
 }

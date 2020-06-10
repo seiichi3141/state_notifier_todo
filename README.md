@@ -2,9 +2,24 @@
 
 こんにちは@seiichi3141です。最近state_notifierを始めました。
 
-今まではflutter_blocを使っていたんですが、state_notifierとfreezedのコンボでだいぶ記述量が減ると知って試してからすっかり気に入っています。
+今まではflutter_blocを使っていたんですが、state_notifierとfreezedのコンボでだいぶ記述量が減ると知って試してからすっかり気に入って、開発中のアプリもほとんど書き換えてしまいました。
 
-ということで今回はstate_notifierとfreezedで簡単なTodoアプリを作ってみます。
+今回はそのstate_notifierとfreezedで簡単なTodoリストアプリを作ってその便利さ紹介できたらいいなと思っています。
+
+リポジトリは[こちら](https://github.com/seiichi3141/state_notifier_todo)です。
+
+# 概要
+
+* ModelやStateにfreezedを使って手軽にimmutableやcopyWithを実現する
+* StateNotifierを継承したControllerを実装してstateを管理する
+* ScreenはStateを監視して表示、Controllerを介してstate操作を行う
+* ProviderでStateやControllerの受け渡しを簡潔にする
+
+# Todoリストの機能
+
+* Todoを追加できる
+* Todoの未完了-完了を切り替えられる
+* リスト表示画面では未完了のリスト、完了のリストの表示を切り替えることができる
 
 # 使用するライブラリ
 
@@ -33,12 +48,14 @@ dev_dependencies:
 
 ```
 
-## Todo model
+# モデル
+
+## Todo
 
 Todoを表すModelを実装します。freezedアノテーションをつけ、コンストラクタやcopyWithなどを自動生成するようにします。
 
 ```dart
-import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart'; // *.freezed.dartで必要なのでimportしておく
 import 'package:freezed_annotation/freezed_annotation.dart';
 
 part 'todo.freezed.dart';
@@ -46,18 +63,22 @@ part 'todo.freezed.dart';
 @freezed
 abstract class Todo with _$Todo {
   const factory Todo({
-    int id,
+    String id,  // uuidで割りつける予定
     String title,
-    bool completed,
+    @Default(false) bool completed,
   }) = TodoData;
 }
 ```
 
-## Todos State
+# ステートとコントローラ
 
-TodosStateを実装します。TodosStateもfreezedアノテーションをつけ、データを持つTodoStateDataとローディング中を示すTodosStateLoadingの二つの状態を定義する。
+## TodosState
+
+TodosStateを実装します。freezedアノテーションをつけ、データを持つTodoStateDataとローディング中を示すTodosStateLoadingの二つの状態を定義します。
 
 TodosStateのクラスをチェックし、TodosStateLoadingであればまだ読み込み中、TodosStateDataであればデータの読み込みが終わったという判断ができるようになります。
+
+TodosStateDataにはすべてのTodoが入るtodosを持っててもらいます。
 
 ```dart
 part 'todos_state.freezed.dart';
@@ -67,19 +88,15 @@ abstract class TodosState with _$TodosState {
   const factory TodosState({
     @Default(<Todo>[]) List<Todo> todos,
   }) = TodosStateData;
-  const factory TodosState.loading({
-    @Default(<Todo>[]) List<Todo> todos,
-  }) = TodosStateLoading;
+  const factory TodosState.loading() = TodosStateLoading;
 }
 ```
+
+## TodosContoller
 
 このTodosStateへの操作はStateNotifierを継承したTodosControllerを通してやります。TodosControllerはLocatorMixinを宣言しておきcontextにあるproviderへのアクセスを容易にしておきます。
 ここでは仮にinitStateで5秒間ウエイトを入れ、その後初期データとしていくつかのTodoをstateへ設定しています。
 本番ではここでRepositoryなりDBからロードすることになるはずです。
-
-また、TodosControllerにはadd/toggleを外部に公開し、todoの追加、完了をできるようにします。
-
-stateはimmutableでメンバ変数を直接変更することはできないので、stateを更新するときは現在のstateからcopyWithでコピーするか、新規のstateで上書きすることになります。
 
 ```dart
 class TodosController extends StateNotifier<TodosState> with LocatorMixin {
@@ -93,6 +110,7 @@ class TodosController extends StateNotifier<TodosState> with LocatorMixin {
 
     await Future<void>.delayed(const Duration(seconds: 3));
 
+    // 初期データを設定、TodosStateLoadingからTodoStateDataへ変わるのでローディング完了の状態となる
     state = TodosState(
       todos: [
         Todo(id: _uuid.v4(), title: '朝食を食べる'),
@@ -101,40 +119,52 @@ class TodosController extends StateNotifier<TodosState> with LocatorMixin {
       ],
     );
   }
+}
+```
 
+また、TodosControllerにはadd/toggleを外部に公開し、todoの追加、完了をできるようにします。
+
+stateはimmutableでメンバ変数を直接変更することはできないので、stateを更新するときは現在のstateからcopyWithでコピーするか、新規のstateで上書きすることになります。
+
+```dart
   void add(String title) {
-    final todos = state.todos.toList()
-      ..add(
-        Todo(id: _uuid.v4(), title: title),
+    final currentState = state;
+    if (currentState is TodosStateData) {
+      // todosのクローンに新しいTodoを追加してstateを更新
+      final todos = currentState.todos.toList()
+        ..add(
+          Todo(id: _uuid.v4(), title: title),
+        );
+      state = currentState.copyWith(
+        todos: todos,
       );
-    state = state.copyWith(
-      todos: todos,
-    );
+    }
   }
 
   void toggle(Todo todo) {
-    final todos = state.todos.map((t) {
-      if (t == todo) {
-        return t.copyWith(
-          completed: !t.completed,
-        );
-      }
-      return t;
-    }).toList();
-    state = state.copyWith(
-      todos: todos,
-    );
+    final currentState = state;
+    if (currentState is TodosStateData) {
+      // Todoを検索してcomplatedをtoggleし、stateを更新
+      final clone = currentState.todos.map((t) {
+        if (t == todo) {
+          return t.copyWith(
+            completed: !t.completed,
+          );
+        }
+        return t;
+      }).toList();
+      state = TodosState(
+        todos: clone,
+      );
+    }
   }
-}
 ```
 
 ## FilteredTodosState
 
-TodosStateをそのまま表示に使うこともできますが、フィルタリングしたリストを表示したいと思います。そのため画面の表示用にTodoのリストをフィルタリングした結果を持つFilteredTodosStateを実装をします。
+TodosStateをそのまま表示に使うこともできますが、今回はフィルタリングしたリストを表示したいと思っています。そのために画面の表示用にTodoのリストをフィルタリングした結果を持つFilteredTodosStateを実装をします。
 
-また、FilteredTodosStateには今のフィルタリングのパラメータとしてcompleted変数を持っててもらいます。
-
-TodosStateと同じようにFilteredTodosStateDataとFilteredTodosStateLoadingの二つの状態を定義しました。
+現在のフィルタリングのパラメータとしてcompleted変数を、フィルタリングされたTodoのリストとしてtodos持っててもらいます。
 
 ```dart
 part 'filtered_todos_state.freezed.dart';
@@ -145,49 +175,38 @@ abstract class FilteredTodosState with _$FilteredTodosState {
     @Default(false) bool completed,
     @Default(<Todo>[]) List<Todo> todos,
   }) = FilteredTodosStateData;
-  const factory FilteredTodosState.loading({
-    @Default(false) bool completed,
-    @Default(<Todo>[]) List<Todo> todos,
-  }) = FilteredTodosStateLoading;
 }
 ```
 
-FilteredTodosControllerを実装します。LocatorMixinを宣言するとBuildContextからStateやControllerを探してきてくれるread関数やwatch関数を使えるようになります。
+## FilteredTodosController
+
+FilteredTodosControllerを実装します。フィルタのパラメータ変更機能を提供します。
+
+LocatorMixinを宣言するとBuildContextからStateやControllerを探してきてくれるread関数やwatch関数を使えるようになります。
 
 LocatorMixinを宣言しているとupdate関数をoverrideして使えるようになります。ここでwatchしたStateやControllerは、その変化を検出できるようになります。
 
 ここではTodosStateをwatchしtodosが更新されるたびにfilteredTodos関数を実行して最新の情報へアップデートするようにしました。
 
-toggle関数でstateのcompletedを変更し、TodoのリストもTodosStateの最新の情報を使ってアップデートするようにしました。
-
 ```dart
 class FilteredTodosController extends StateNotifier<FilteredTodosState>
     with LocatorMixin {
-  FilteredTodosController() : super(const FilteredTodosState.loading());
+  FilteredTodosController() : super(const FilteredTodosState());
 
   @override
   void update(Locator watch) {
     super.update(watch);
 
+    // TodosStateを監視、stateがTodosStateDataなら更新されたtodosが渡されてくる、そのほかのstateは無視する
     watch<TodosState>().maybeWhen((todos) {
-      state = FilteredTodosState(
+      state = state.copyWith(
         completed: state.completed,
-        todos: filteredTodos(todos, completed: state.completed),
+        todos: _filteredTodos(todos, completed: state.completed),
       );
     }, orElse: () => null);
   }
 
-  void toggle() {
-    final completed = !state.completed;
-    read<TodosState>().maybeWhen((todos) {
-      state = FilteredTodosState(
-        completed: completed,
-        todos: filteredTodos(todos, completed: completed),
-      );
-    }, orElse: () => null);
-  }
-
-  List<Todo> filteredTodos(List<Todo> todos, {bool completed}) {
+  List<Todo> _filteredTodos(List<Todo> todos, {bool completed}) {
     return todos
         .where((todo) => completed ? todo.completed : !todo.completed)
         .toList();
@@ -195,9 +214,224 @@ class FilteredTodosController extends StateNotifier<FilteredTodosState>
 }
 ```
 
+toggle関数でstateのcompletedを変更し、Todoのリストもそれに合わせてアップデートします。
+
+```dart
+  void toggle() {
+    final completed = !state.completed;
+    read<TodosState>().maybeWhen((todos) {
+      state = state.copyWith(
+        completed: completed,
+        todos: _filteredTodos(todos, completed: completed),
+      );
+    }, orElse: () => null);
+  }
+```
+
 ## *.freezed.dartの生成
+
+build_runnerを動作させてfreezedアノテーションを付けたclassに対応する*.freezed.dartファイルを生成します。
 
 ```
 flutter pub pub run build_runner build
 ```
 
+# スクリーン
+
+## FilteredTodos
+
+フィルタリングされたTodoのリストを表示するためのWidgetを実装します。
+
+providerパッケージの機能であるcontext.watchを使って、TodosStateの監視を行います。freezedの機能でwhen関数でそれぞれのstateによって返すWidgetを変えます。
+
+loadingの場合はCircularProgressIndicatorを返してローディング中だとわかるようにします。
+
+Dataのstateだった場合はローディングが終わっているのでcontext.selectを使ってFilteredTodosStateのtodosを監視し、その内容でListViewを構築して返します。
+
+context.watch/selectはこの後上位WidgetでProvideされる予定のTodosStateやFilteredTodosStateを検索、監視してくれるので便利です。
+
+```dart
+class FilteredTodos extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return context.watch<TodosState>().when(
+      // TodosStateDataの場合
+      (_) {
+        final todos = context
+            .select<FilteredTodosState, List<Todo>>((state) => state.todos);
+        return ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: todos.length,
+          itemBuilder: (_, index) {
+            final todo = todos[index];
+            return _buildCard(context, todo);
+          },
+        );
+      },
+      // TodosStateLoadingの場合
+      loading: () => const Center(child: CircularProgressIndicator()),
+    );
+  }
+```
+
+ListViewのアイテムとして使うListTileには完了したかどうかを示すアイコンを表示します。
+
+今回はTodoのcompletedによって色を切り替えています。アイコンが押された時にはcontext.readでTodosControllerを見つけ出してtoggleを実行するようにしています。
+
+これにより、
+
+toggleが実行される->TodosStateが更新される->FilteredTodosControllerがそれを検知しstateを更新する->FilteredTodos Widgetがそれを検知し表示を更新する
+
+といった流れでリストに表示されるTodoが更新されるようになります。
+
+```dart
+  Widget _buildCard(BuildContext context, Todo todo) {
+    return Card(
+      child: ListTile(
+        title: Text(todo.title),
+        trailing: IconButton(
+          icon: Icon(
+            Icons.done,
+            color: todo.completed ? Colors.green : Colors.grey,
+          ),
+          onPressed: () => context.read<TodosController>().toggle(todo),
+        ),
+      ),
+    );
+  }
+}
+```
+
+## FilteredTodosScreen
+
+先ほど実装したFilteredTodos Widgetの表示や、未完了/完了の切り替え、新しいTodoの追加を行うための画面、FilteredTodosScreenを実装します。
+
+AppBarとFilteredTodosを構築している箇所です。
+
+AppBarにはactionsにIcons.done_allを使ったIconButtonを追加して、未完了/完了のどちらを表示しているかを表しています。FilteredTodosStateのcompletedを監視してその色を決めています。
+
+押された時にはFilteredTodosControllerのtoggleを実行させてリストを更新させます。
+
+```dart
+class FilteredTodosScreen extends StatelessWidget {
+  final _textEditingController = TextEditingController();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: _buildAppBar(context),
+      body: _buildBody(context),
+    );
+  }
+
+  PreferredSizeWidget _buildAppBar(BuildContext context) {
+    return AppBar(
+      title: const Text('Todo'),
+      centerTitle: true,
+      actions: [
+        IconButton(
+          icon: Icon(Icons.done_all,
+              color: context.select<FilteredTodosState, bool>(
+                      (state) => state.completed)
+                  ? Colors.white
+                  : Colors.grey),
+          onPressed: () {
+            context.read<FilteredTodosController>().toggle();
+          },
+        ),
+      ],
+    );
+  }
+
+  Widget _buildBody(BuildContext context) {
+    return Column(
+      children: [
+        Expanded(child: FilteredTodos()),
+        _buildPanel(context),
+      ],
+    );
+  }
+```
+
+新しいTodoを追加するためのTexitFieldとFloatingActionButtonを実装しているところです。
+
+追加ボタンが押されたときに、TodosControllerのaddにTexitFieldの内容を渡して新しいTodoを追加させ、TextFieldの内容をクリアさせています。
+
+```dart
+  Widget _buildPanel(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextField(
+              controller: _textEditingController,
+              decoration: const InputDecoration(
+                hintText: 'タイトル',
+                filled: false,
+              ),
+            ),
+          ),
+          FloatingActionButton(
+            child: Icon(Icons.add),
+            onPressed: () {
+              var title = _textEditingController.value.text;
+              if (title.isEmpty) {
+                title = 'No Title';
+              }
+              context.read<TodosController>().add(title);
+              _textEditingController.clear();
+            },
+          ),
+        ],
+      ),
+    );
+  }
+```
+
+# プロバイダー
+
+## main.dart
+
+このままMaterialAppにFilterdTodosScreenを渡して表示させようとするとcontextにStateやControllerが見当たらないと怒られてしまいます。
+
+まず、App全体で利用するだろうTodosState/TodosControllerはMaterialAppをStateNotifierProviderでWrapして使えるようにする必要があります。
+
+また、FilteredTodosState/FilteredTodosControllerはそれを利用するFilteredTodosScreenをStateNotifierProviderでWrapしてFilteredTodosControllerを使えるようにしておきます。
+
+
+```dart
+class App extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return StateNotifierProvider<TodosController, TodosState>(
+      create: (_) => TodosController(),
+      child: MaterialApp(
+        title: 'State Notifier Todo Demo',
+        debugShowCheckedModeBanner: false,
+        home:
+            StateNotifierProvider<FilteredTodosController, FilteredTodosState>(
+          create: (_) => FilteredTodosController(),
+          child: FilteredTodosScreen(),
+        ),
+      ),
+    );
+  }
+}
+```
+
+# 実行
+
+実装は以上です。動かしてみましょう。
+
+
+
+# まとめ
+
+state_notifierとfreezedを使ってTodoリストを実装することができました。
+
+Todoのリストを管理しているおおもとはTodosState/TodosControllerです。FilteredTodosState/FilteredTodosControllerはその情報をもとに独自のパラメータを利用してリストを加工しているにすぎません。例えばこのアプリにTodo検索の機能を追加したいと考えたとき、SearchTodosState/SearchTodosControllerを追加して入力されたキーワードをもとにリストを加工してそのstateに持たせることができるでしょう。App以下であればTodosControllerを介してTodosStateを更新すれば、それを監視しているStateやScreenだけがその変化によって振る舞いを変えてくれます。
+
+freezedのおかげでModelやStateの実装も楽にできました。freezedにはjson_serializationとの連携もありますので、DBの実装もかなり楽になると思います。
+
+一度試してみてはいかがでしょうか。

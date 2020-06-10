@@ -13,21 +13,14 @@ class App extends StatelessWidget {
   Widget build(BuildContext context) {
     return StateNotifierProvider<TodosController, TodosState>(
       create: (_) => TodosController(),
-      child: Builder(
-        builder: (context) {
-          return MaterialApp(
-            title: 'State Notifier Todo Demo',
-            debugShowCheckedModeBanner: false,
-            theme: ThemeData(
-              visualDensity: VisualDensity.adaptivePlatformDensity,
-            ),
-            home: StateNotifierProvider<FilteredTodosController,
-                FilteredTodosState>(
-              create: (_) => FilteredTodosController(),
-              child: FilteredTodosScreen(),
-            ),
-          );
-        },
+      child: MaterialApp(
+        title: 'State Notifier Todo Demo',
+        debugShowCheckedModeBanner: false,
+        home:
+            StateNotifierProvider<FilteredTodosController, FilteredTodosState>(
+          create: (_) => FilteredTodosController(),
+          child: FilteredTodosScreen(),
+        ),
       ),
     );
   }
