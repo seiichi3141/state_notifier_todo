@@ -393,7 +393,7 @@ class FilteredTodosScreen extends StatelessWidget {
 
 まず、App全体で利用するだろうTodosState/TodosControllerはMaterialAppをStateNotifierProviderでWrapして使えるようします。
 
-また、FilteredTodosState/FilteredTodosControllerはそれを利用するFilteredTodosScreenをStateNotifierProviderでWrapしてFilteredTodosControllerを使えるようにしておきます。
+また、FilteredTodosState/FilteredTodosControllerはそれを利用するFilteredTodosScreenをStateNotifierProviderでWrapして使えるようにしておきます。
 
 ```dart
 class App extends StatelessWidget {
@@ -418,6 +418,10 @@ class App extends StatelessWidget {
 # 実行
 
 実装は以上です。動かしてみましょう。
+
+![state_notifier_todo](https://user-images.githubusercontent.com/1445649/84268675-fee84100-ab62-11ea-9fee-3f4db43b012c.gif)
+
+ちょっとわかりにくいですがFuture.delayによるローディング、Todoの追加や未完了/完了のtoggle、フィルタもうまく動いているのがわかると思います。
 
 # まとめ
 
