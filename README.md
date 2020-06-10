@@ -96,7 +96,7 @@ abstract class TodosState with _$TodosState {
 
 このTodosStateへの操作はStateNotifierを継承したTodosControllerを通してやります。TodosControllerはLocatorMixinを宣言しておきcontextにあるproviderへのアクセスを容易にしておきます。
 ここでは仮にinitStateで5秒間ウエイトを入れ、その後初期データとしていくつかのTodoをstateへ設定しています。
-本番ではここでRepositoryなりDBからロードすることになるはずです。
+本番ではここでRepositoryなりDBなりからロードすることになるはずです。
 
 ```dart
 class TodosController extends StateNotifier<TodosState> with LocatorMixin {
@@ -122,9 +122,9 @@ class TodosController extends StateNotifier<TodosState> with LocatorMixin {
 }
 ```
 
-また、TodosControllerにはadd/toggleを外部に公開し、todoの追加、完了をできるようにします。
+また、TodosControllerではadd/toggleを外部に公開し、todoの追加、未完了/完了切り替えをできるようにします。
 
-stateはimmutableでメンバ変数を直接変更することはできないので、stateを更新するときは現在のstateからcopyWithでコピーするか、新規のstateで上書きすることになります。
+stateはimmutableなのでメンバ変数を直接変更することはできません。なので、stateを更新するときは現在のstateからcopyWithでコピーするか、新規のstateで上書きすることになります。
 
 ```dart
   void add(String title) {
@@ -162,7 +162,7 @@ stateはimmutableでメンバ変数を直接変更することはできないの
 
 ## FilteredTodosState
 
-TodosStateをそのまま表示に使うこともできますが、今回はフィルタリングしたリストを表示したいと思っています。そのために画面の表示用にTodoのリストをフィルタリングした結果を持つFilteredTodosStateを実装をします。
+TodosStateをそのまま表示に使うこともできますが、今回はフィルタリングしたリストを表示したいと考えています。そのために画面の表示用にTodoのリストをフィルタリングした結果を持つFilteredTodosStateを実装をします。
 
 現在のフィルタリングのパラメータとしてcompleted変数を、フィルタリングされたTodoのリストとしてtodos持っててもらいます。
 
@@ -182,9 +182,7 @@ abstract class FilteredTodosState with _$FilteredTodosState {
 
 FilteredTodosControllerを実装します。フィルタのパラメータ変更機能を提供します。
 
-LocatorMixinを宣言するとBuildContextからStateやControllerを探してきてくれるread関数やwatch関数を使えるようになります。
-
-LocatorMixinを宣言しているとupdate関数をoverrideして使えるようになります。ここでwatchしたStateやControllerは、その変化を検出できるようになります。
+LocatorMixinを宣言するとBuildContextからStateやControllerを探してきてくれるread関数やwatch関数を使えるようになります。update関数をoverrideして使えるようにもなります。ここでwatchしたStateやControllerは、その変化を検出できるようになります。
 
 ここではTodosStateをwatchしtodosが更新されるたびにfilteredTodos関数を実行して最新の情報へアップデートするようにしました。
 
@@ -230,7 +228,7 @@ toggle関数でstateのcompletedを変更し、Todoのリストもそれに合�
 
 ## *.freezed.dartの生成
 
-build_runnerを動作させてfreezedアノテーションを付けたclassに対応する*.freezed.dartファイルを生成します。
+build_runnerを動作させて、freezedアノテーションを付けたclassを実装する*.freezed.dartファイルを生成します。
 
 ```
 flutter pub pub run build_runner build
@@ -242,13 +240,11 @@ flutter pub pub run build_runner build
 
 フィルタリングされたTodoのリストを表示するためのWidgetを実装します。
 
-providerパッケージの機能であるcontext.watchを使って、TodosStateの監視を行います。freezedの機能でwhen関数でそれぞれのstateによって返すWidgetを変えます。
+providerパッケージの機能であるcontext.watchを使って、TodosStateの監視を行います。freezedの機能のwhen関数で現在のstateによって返すWidgetを変えることができます。
 
 loadingの場合はCircularProgressIndicatorを返してローディング中だとわかるようにします。
 
-Dataのstateだった場合はローディングが終わっているのでcontext.selectを使ってFilteredTodosStateのtodosを監視し、その内容でListViewを構築して返します。
-
-context.watch/selectはこの後上位WidgetでProvideされる予定のTodosStateやFilteredTodosStateを検索、監視してくれるので便利です。
+Dataのstateだった場合はローディングが終わっています。context.selectを使ってFilteredTodosStateのtodosを監視し、その内容でListViewを構築して返します。
 
 ```dart
 class FilteredTodos extends StatelessWidget {
@@ -274,15 +270,15 @@ class FilteredTodos extends StatelessWidget {
   }
 ```
 
-ListViewのアイテムとして使うListTileには完了したかどうかを示すアイコンを表示します。
+ListViewのアイテムとして使うListTileには完了したかどうかを示すアイコンを表示します。今回はTodoのcompletedによって色を切り替えています。
 
-今回はTodoのcompletedによって色を切り替えています。アイコンが押された時にはcontext.readでTodosControllerを見つけ出してtoggleを実行するようにしています。
+アイコンが押された時にはcontext.readでTodosControllerを見つけ出してtoggleを実行するようにしています。
 
 これにより、
 
 toggleが実行される->TodosStateが更新される->FilteredTodosControllerがそれを検知しstateを更新する->FilteredTodos Widgetがそれを検知し表示を更新する
 
-といった流れでリストに表示されるTodoが更新されるようになります。
+といった流れでTodosStateの変化に合わせてリストに表示されるTodoが更新されるようになります。
 
 ```dart
   Widget _buildCard(BuildContext context, Todo todo) {
@@ -395,10 +391,9 @@ class FilteredTodosScreen extends StatelessWidget {
 
 このままMaterialAppにFilterdTodosScreenを渡して表示させようとするとcontextにStateやControllerが見当たらないと怒られてしまいます。
 
-まず、App全体で利用するだろうTodosState/TodosControllerはMaterialAppをStateNotifierProviderでWrapして使えるようにする必要があります。
+まず、App全体で利用するだろうTodosState/TodosControllerはMaterialAppをStateNotifierProviderでWrapして使えるようします。
 
 また、FilteredTodosState/FilteredTodosControllerはそれを利用するFilteredTodosScreenをStateNotifierProviderでWrapしてFilteredTodosControllerを使えるようにしておきます。
-
 
 ```dart
 class App extends StatelessWidget {
@@ -423,8 +418,6 @@ class App extends StatelessWidget {
 # 実行
 
 実装は以上です。動かしてみましょう。
-
-
 
 # まとめ
 
